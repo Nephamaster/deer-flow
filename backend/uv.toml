@@ -1,3 +1,1 @@
-default-index = "https://mirrors.aliyun.com/pypi/simple"
-http-timeout = 120
-http-retries = 8
+index-url = "https://mirrors.aliyun.com/pypi/simple"
