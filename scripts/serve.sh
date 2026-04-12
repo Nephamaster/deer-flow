@@ -70,10 +70,20 @@ done
 
 _kill_port() {
     local port=$1
-    local pid
-    pid=$(lsof -ti :"$port" 2>/dev/null) || true
-    if [ -n "$pid" ]; then
-        kill -9 $pid 2>/dev/null || true
+    local pids=""
+
+    if command -v lsof >/dev/null 2>&1; then
+        pids="$(lsof -ti :"$port" 2>/dev/null || true)"
+    elif command -v ss >/dev/null 2>&1; then
+        pids="$(ss -ltnp 2>/dev/null | awk -v p=":$port" '$4 ~ p {print $NF}' | sed -n 's/.*pid=\([0-9]\+\).*/\1/p' | sort -u)"
+    elif command -v netstat >/dev/null 2>&1; then
+        pids="$(netstat -ltnp 2>/dev/null | awk -v p=":$port" '$4 ~ p {split($7,a,"/"); if (a[1] ~ /^[0-9]+$/) print a[1]}' | sort -u)"
+    elif command -v fuser >/dev/null 2>&1; then
+        pids="$(fuser -n tcp "$port" 2>/dev/null || true)"
+    fi
+
+    if [ -n "$pids" ]; then
+        echo "$pids" | xargs -r kill -9 2>/dev/null || true
     fi
 }
 
@@ -91,6 +101,7 @@ stop_all() {
     _kill_port 2024
     _kill_port 8001
     _kill_port 3000
+    _kill_port 2026
     ./scripts/cleanup-containers.sh deer-flow-sandbox 2>/dev/null || true
     echo "✓ All services stopped"
 }
@@ -296,8 +307,9 @@ run_service "Frontend" \
     3000 120
 
 # 4. Nginx
+    # "nginx -g 'daemon off;' -c '$REPO_ROOT/docker/nginx/nginx.local.conf' -p '$REPO_ROOT' > logs/nginx.log 2>&1" \
 run_service "Nginx" \
-    "nginx -g 'daemon off;' -c '$REPO_ROOT/docker/nginx/nginx.local.conf' -p '$REPO_ROOT' > logs/nginx.log 2>&1" \
+    "nginx -g 'error_log logs/nginx-error.log; daemon off;' -c '$REPO_ROOT/docker/nginx/nginx.local.conf' -p '$REPO_ROOT' > logs/nginx.log 2>&1" \
     2026 10
 
 # ── Ready ────────────────────────────────────────────────────────────────────
